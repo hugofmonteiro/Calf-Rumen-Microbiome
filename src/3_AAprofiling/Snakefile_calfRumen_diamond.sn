@@ -1,0 +1,31 @@
+import os
+import glob
+import sys
+
+inpath = "/home/hfm/Rumen_Microbiome_Genomics/1_Sequences_Guanhui/SAMPLES/"
+outpath = "/home/hfm/Rumen_Microbiome_Genomics/1_Sequences_Guanhui/"
+
+
+SAMPLES=[] 
+for name in glob.glob(inpath+"*_R1_001.fixed.gz"):
+    ID = os.path.basename(name).split("_R1_001")[0]
+    if ID not in SAMPLES:
+        SAMPLES.append(ID)
+
+print('samples are:', SAMPLES, file=sys.stderr)
+
+rule all:
+    input:
+         blastx = expand(outpath+"functionalAnalysis/diamond/daa/{sample}.daa", sample=SAMPLES)
+
+rule blastx:
+    input:
+         read1 = outpath+"nonhost_reads/{sample}_non_host_reads_1.fixed.gz",
+         read2 = outpath+"nonhost_reads/{sample}_non_host_reads_2.fixed.gz"
+    output:
+         blastx = outpath+"functionalAnalysis/diamond/daa/{sample}.daa"
+    conda:
+         "diamond.yaml"
+    shell:"""
+         diamond blastx -1 {input.read1} -2 {input.read2} -d nr.dmnd -o {output.blastx} -e 0.001 --max-target-seqs 1 --threads 128 
+         """

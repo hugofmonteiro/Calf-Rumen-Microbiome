@@ -1,0 +1,88 @@
+import os
+import glob
+import sys
+
+inpath = "/home/hfm/Rumen_Microbiome_Genomics/1_Sequences_Guanhui/SAMPLES/"
+outpath = "/home/hfm/Rumen_Microbiome_Genomics/1_Sequences_Guanhui/"
+
+
+SAMPLES=[]
+for name in glob.glob(inpath+"*_R1_001.fixed.gz"):
+    ID = os.path.basename(name).split("_R1_001")[0]
+    if ID not in SAMPLES:
+        SAMPLES.append(ID)
+
+rule all:
+    input:
+         fa = expand(outpath+"functionalAnalysis/trinity/{sample}.trinity.fasta", sample=SAMPLES),
+         genes = expand(outpath+"functionalAnalysis/trinity/{sample}/quant.sf.genes", sample = SAMPLES),
+         iso = expand(outpath+"functionalAnalysis/trinity/{sample}/quant.sf", sample = SAMPLES),
+         counts = outpath+"functionalAnalysis/trinity/Rumen_trinity_salmon.isoform.counts.matrix",
+         gene = outpath+"functionalAnalysis/trinity/Rumen_trinity_salmon_gene_transmap.isoform.counts.matrix"
+
+
+rule Trinity:
+    input:
+        read1 = expand(outpath+"nonhost_reads/{sample}_non_host_reads_1.fixed.gz", sample=SAMPLES),
+        read2 = expand(outpath+"nonhost_reads/{sample}_non_host_reads_2.fixed.gz", sample=SAMPLES)
+    output:
+         fa = outpath+"functionalAnalysis/trinity/{sample}.trinity.fasta"
+    params:
+         dir = directory(outpath+"functionalAnalysis/trinity/")
+    conda:
+         "trinity.yaml"
+    shell:"""
+         Trinity --seqType fq --max_memory 400G --CPU 20 --left {input.read1} --right {input.read2} --output {params.dir}
+         """
+
+rule abundance_est:
+    input:
+        read1 = expand(outpath+"nonhost_reads/{sample}_non_host_reads_1.fixed.gz", sample=SAMPLES),
+        read2 = expand(outpath+"nonhost_reads/{sample}_non_host_reads_2.fixed.gz", sample=SAMPLES)
+    output:
+         genes = outpath+"functionalAnalysis/trinity/{sample}/quant.sf.genes",
+         iso = outpath+"functionalAnalysis/trinity/{sample}/quant.sf"
+    params:
+         fa = expand(outpath+"functionalAnalysis/trinity/{sample}.trinity.fasta", sample=SAMPLES),
+         dir = directory(outpath+"functionalAnalysis/trinity/") 
+    conda:
+         "trinity.yaml"
+    shell:"""
+         align_and_estimate_abundance.pl --seqType fq --left {input.read1} --right {input.read2} --transcripts {params.fa}  --est_method salmon \
+         --trinity_mode --prep_reference --output_dir {params.dir}
+         """
+
+rule count_matrix:
+    input:
+         iso = expand(outpath+"functionalAnalysis/trinity/{sample}/quant.sf", sample=SAMPLES)
+    output:
+         counts = outpath+"Rumen_trinity_salmon.isoform.counts.matrix"
+    params:
+         pre = "Rumen_trinity_salmon",
+         dir = directory(outpath+"functionalAnalysis/trinity/")
+    conda:
+         "trinity.yaml"
+    shell:"""
+         cd {params.dir}
+         abundance_estimates_to_matrix.pl --est_method salmon --gene_trans_map none --out_prefix {params.pre} --name_sample_by_basedir {input.iso}
+         """
+
+rule count_matrix_gene:
+    input:
+         iso = expand(outpath+"functionalAnalysis/trinity/{sample}/quant.sf", sample=SAMPLES)
+    output:
+         gene = outpath+"functionalAnalysis/trinity/Rumen_trinity_salmon_gene_transmap.isoform.counts.matrix"
+    params:
+         pre = "Rumen_trinity_salmon_gene_transmap",
+         genemap = outpath+"functionalAnalysis/trinity/Trinity.fasta.gene_trans_map",
+         dir = directory(outpath+"functionalAnalysis/trinity/")
+    conda:
+         "trinity.yaml"
+    shell:"""
+         cd {params.dir}
+         abundance_estimates_to_matrix.pl --est_method salmon --gene_trans_map {params.genemap} --out_prefix {params.pre} --name_sample_by_basedir {input.iso}
+         """
+
+
+
+
